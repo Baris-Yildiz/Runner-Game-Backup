@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
 using TMPro;
+using DG.Tweening;
 
 public class PlayerControl : MonoBehaviour
 {
@@ -14,6 +15,12 @@ public class PlayerControl : MonoBehaviour
     public TMP_Text collectibleText;
     public TMP_Text toyText;
     public GameObject shopPanel;
+    public Camera cam;
+
+    public GameObject sackJellyPrefab;
+    public List<GameObject> sackJellies;
+    private int jellyIndex = 0;
+    public Transform pool;
 
     float jellyCount, toyCount = 0;
 
@@ -24,10 +31,132 @@ public class PlayerControl : MonoBehaviour
     float minSpeed = 7f;
     public int jellyworth;
 
-    public enum Traits
+    public Vector3 GetSackTransform(float offset)
     {
-        Speed = 0,
-        Capacity = 1,
+        Vector3 parentTransform = gameObject.transform.position;
+        return new Vector3(parentTransform.x, parentTransform.y + (offset / 2), parentTransform.z - 0.85f);
+    }
+
+    public void PutInSack()
+    {
+        GameObject jelly = sackJellies[jellyIndex];
+        jelly.SetActive(true);
+        jelly.transform.SetParent(gameObject.transform.GetChild(1));
+        jelly.transform.position = GetSackTransform(jellyIndex);
+        jellyIndex++;
+    }
+
+    public void RemoveFromSack()
+    {
+        GameObject jelly = sackJellies[--jellyIndex];
+        jelly.SetActive(false);
+        jelly.transform.SetParent(pool);
+    }
+
+    public void PutInPool()
+    {
+        GameObject jelly = Instantiate(sackJellyPrefab);
+        jelly.transform.SetParent(pool);
+        jelly.SetActive(false);
+        sackJellies.Add(jelly);
+    }
+
+    public void MakeToys()
+    {
+        if (jellyCount >= 1)
+        {
+            toyCount += 2 * jellyCount;
+            for(int i = 0; i < jellyCount; i++)
+            {
+                RemoveFromSack();
+            }
+            jellyCount = 0;
+            collectibleText.text = jellyCount.ToString();
+            toyText.text = toyCount.ToString();
+        }
+    }
+
+    public void ExitShop()
+    {
+        Time.timeScale = 1;
+        shopPanel.SetActive(false);
+        speed = 7f;
+    }
+
+    public void UpgradeTrait(int trait)  // 0 for jelly, 1 for capacity 
+    {
+
+        if (toyCount >= upgradeCosts[trait])
+        {
+            toyCount -= upgradeCosts[trait];
+            string traitString = string.Empty;
+            toyText.text = toyCount.ToString();
+            switch (trait)
+            {
+                case 0:
+                    jellyworth += upgradeImpacts[trait];
+                    upgradeCosts[trait] += 80;
+                    traitString = "Jelly";
+                    break;
+                case 1:
+                    capacity += upgradeImpacts[trait];
+                    for(int i = 0; i < upgradeImpacts[trait]; i++)
+                    {
+                        PutInPool();
+                    }
+                    upgradeCosts[trait]++;
+                    traitString = "Capacity";
+                    break;
+            }
+            GameObject.FindWithTag(traitString + "Text").GetComponent<TMP_Text>().text = string.Format("{0} +1 ({1} Toys)", traitString, upgradeCosts[trait]);
+        }
+    }
+
+    void EnterShoppingPhase()
+    {
+        Time.timeScale = 0;
+        shopPanel.SetActive(true);
+    }
+
+    void IncreaseJellyBy(int by, GameObject jelly)
+    {
+        if (jellyCount < capacity)
+        {
+            jellyCount += by;
+            speed += 2.5f;
+            collectibleText.text = jellyCount.ToString();
+            jelly.transform.DOMove(cam.ScreenToWorldPoint(new Vector3(collectibleText.transform.position.x, collectibleText.transform.position.y, collectibleText.transform.position.z + speed)), 0.5f);
+            PutInSack();
+            //Destroy(jelly);
+        }
+        else    //avoid jelly
+        {
+            jelly.GetComponent<BoxCollider>().enabled = false;
+            capacityFullAnimator.SetTrigger("PlayFullCapacity");
+        }
+    }
+
+    void DecreaseJellyBy(int by)
+    {
+        jellyCount -= by;
+        collectibleText.text = jellyCount.ToString();
+        RemoveFromSack();
+    }
+
+    void Crash()
+    {
+        if (jellyCount == 0)
+        {
+            #if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+            #endif
+            Application.Quit();
+        }
+        else
+        {
+            speed = minSpeed;
+            DecreaseJellyBy(1);
+        }
     }
 
     readonly int[] upgradeCosts = { 80, 10 }; //0:jelly, 1:capacity
@@ -38,6 +167,8 @@ public class PlayerControl : MonoBehaviour
     {
         collectibleText.text = jellyCount.ToString();
         toyText.text = toyCount.ToString();
+   
+        
     }
 
     // Update is called once per frame
@@ -78,92 +209,4 @@ public class PlayerControl : MonoBehaviour
                 break;
         }
     }
-
-    public void MakeToys()
-    {
-        if(jellyCount >= 1)
-        {
-            toyCount += 2 * jellyCount;
-            jellyCount = 0;
-            collectibleText.text = jellyCount.ToString();
-            toyText.text = toyCount.ToString();
-        }
-    }
-
-    public void ExitShop()
-    {
-        Time.timeScale = 1;
-        shopPanel.SetActive(false);
-        speed = 7f;
-    }
-    
-    public void UpgradeTrait(int trait)  // 0 for jelly, 1 for capacity 
-    {
-        
-        if (toyCount >= upgradeCosts[trait])
-        {
-            toyCount -= upgradeCosts[trait];
-            string traitString = string.Empty;
-            toyText.text = toyCount.ToString();
-            switch (trait)
-            {
-                case 0:
-                    jellyworth += upgradeImpacts[trait];
-                    upgradeCosts[trait]+= 80;
-                    traitString = "Jelly";
-                    break;
-                case 1:
-                    capacity += upgradeImpacts[trait];
-                    upgradeCosts[trait]++;
-                    traitString = "Capacity";
-                    break;
-            }
-            GameObject.FindWithTag(traitString+"Text").GetComponent<TMP_Text>().text = string.Format("{0} +1 ({1} Toys)", traitString, upgradeCosts[trait]);
-        }
-    }
-
-    void EnterShoppingPhase()
-    {
-        Time.timeScale = 0;
-        shopPanel.SetActive(true);
-    }
-
-    void IncreaseJellyBy(int by, GameObject jelly)
-    {
-        if (jellyCount < capacity)
-        {
-            jellyCount += by;
-            speed += 2.5f;
-            collectibleText.text = jellyCount.ToString();
-            Destroy(jelly);
-        }
-        else    //avoid jelly
-        {
-            jelly.GetComponent<BoxCollider>().enabled = false;
-            capacityFullAnimator.SetTrigger("PlayFullCapacity");
-        }
-    }
-
-    void DecreaseJellyBy(int by)
-    {
-        jellyCount -= by;
-        collectibleText.text = jellyCount.ToString();
-    }
-
-    void Crash()
-    {
-        if(jellyCount == 0)
-        {
-            #if UNITY_EDITOR
-            UnityEditor.EditorApplication.isPlaying = false;
-            #endif
-            Application.Quit();
-        }
-        else
-        {
-            speed = minSpeed;
-            DecreaseJellyBy(1);
-        }
-    }
-
 }
