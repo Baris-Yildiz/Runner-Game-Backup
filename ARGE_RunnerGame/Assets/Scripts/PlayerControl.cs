@@ -1,4 +1,4 @@
-﻿using System.Collections;
+﻿using System.Collections; 
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -11,16 +11,19 @@ public class PlayerControl : MonoBehaviour
     Touch touch;
     [SerializeField] float horizontalSpeed=0.01f;
     [SerializeField] float speed =0f;
+    float newPositionZ; 
     float newPositionX;
-    public TMP_Text collectibleText;
+    public TMP_Text collectibleText; 
     public TMP_Text toyText;
     public GameObject shopPanel;
-    public Camera cam;
-
+    public GameObject shopPlatform;
+    public Camera cam; 
     public GameObject sackJellyPrefab;
     public List<GameObject> sackJellies;
     private int jellyIndex = 0;
     public Transform pool;
+    public bool inShop = false;
+    private float shopLowerBound;
 
     float jellyCount, toyCount = 0;
 
@@ -76,11 +79,16 @@ public class PlayerControl : MonoBehaviour
         }
     }
 
-    public void ExitShop()
+    
+
+    public void ExitShoppingPhase()
     {
-        Time.timeScale = 1;
-        shopPanel.SetActive(false);
         speed = 7f;
+        inShop = false;
+        StartCoroutine(Zoom(-1,-0.4f));
+        cam.transform.position = new Vector3(gameObject.transform.position.x, cam.transform.position.y, gameObject.transform.position.z-10);
+        cam.transform.SetParent(gameObject.transform);
+
     }
 
     public void UpgradeTrait(int trait)  // 0 for jelly, 1 for capacity 
@@ -114,10 +122,36 @@ public class PlayerControl : MonoBehaviour
 
     void EnterShoppingPhase()
     {
-        Time.timeScale = 0;
-        shopPanel.SetActive(true);
+        shopLowerBound = gameObject.transform.position.z + 1;
+        speed = 0;
+        inShop = true;
+        gameObject.transform.Translate(0, 0, 2);
+        StartCoroutine(Zoom(1,0.4f));
+        cam.transform.parent = null;
     }
 
+    void EnterShop()
+    {
+        Time.timeScale = 0f;
+        shopPanel.SetActive(true);
+    }
+    public void ExitShop()
+    {
+        Time.timeScale = 1;
+        shopPanel.SetActive(false);
+
+    }
+
+    IEnumerator Zoom(float rotate, float translate)
+    {
+        int timer = 0;
+        while (timer++ < 30)
+        {
+            cam.gameObject.transform.Rotate(rotate, 0, 0);
+            cam.gameObject.transform.Translate(0, translate, 0);
+            yield return new WaitForSeconds(0.015f);
+        }
+    }
     void IncreaseJellyBy(int by, GameObject jelly)
     {
         if (jellyCount < capacity)
@@ -167,35 +201,47 @@ public class PlayerControl : MonoBehaviour
     {
         collectibleText.text = jellyCount.ToString();
         toyText.text = toyCount.ToString();
-   
         
     }
 
     // Update is called once per frame
     void FixedUpdate()
     {
-        transform.position = new Vector3(transform.position.x, transform.position.y, transform.position.z + speed * Time.deltaTime);
+        transform.Translate(0, 0, speed * Time.deltaTime);
         if (Input.touchCount > 0) { StartMoving(); }
     }
 
     void StartMoving()
     {
-        if (speed == 0) { speed = 7f; } //hiz tanimlamasi bu sekilde degistirildi cunku jelly toplandiginda da hizin arttirilmasi gerekiyor.
-
         touch = Input.GetTouch(0);
 
-        if (touch.phase == TouchPhase.Moved)
+        if (!inShop)
         {
-            newPositionX = transform.position.x + touch.deltaPosition.x * horizontalSpeed;
+            if (speed == 0) { speed = 7f; } //hiz tanimlamasi bu sekilde degistirildi cunku jelly toplandiginda da hizin arttirilmasi gerekiyor.
+            
+            if (touch.phase == TouchPhase.Moved)
+            {
+                newPositionX = Mathf.Clamp(transform.position.x + touch.deltaPosition.x * horizontalSpeed, transform.localScale.x / 2f - 5, 5 - transform.localScale.x / 2f);
 
-            if (newPositionX < (0.5f + transform.localScale.x / 2f - 5.5f)) { newPositionX = 0.5f + transform.localScale.x / 2f - 5.5f; }
-            if (newPositionX > (5.5f - 0.5f - transform.localScale.x / 2f)) { newPositionX = 5.5f - 0.5f - transform.localScale.x / 2f; }
-            transform.position = new Vector3(newPositionX, transform.position.y, transform.position.z);
+                transform.position = new Vector3(newPositionX, transform.position.y, transform.position.z);
+            }
         }
+        else
+        {
+            if (touch.phase == TouchPhase.Moved)
+            {
+                newPositionX = Mathf.Clamp(transform.position.x + touch.deltaPosition.x * horizontalSpeed, transform.localScale.x / 2f - 8, 8 - transform.localScale.x / 2f);
+
+                newPositionZ =  Mathf.Clamp(transform.position.z + touch.deltaPosition.y * horizontalSpeed, shopLowerBound, shopLowerBound + 13.5f);
+
+                transform.position = new Vector3(newPositionX, transform.position.y, newPositionZ);
+            }
+        }
+        
     }
     private void OnCollisionEnter(Collision collision)
     {
-        switch(collision.gameObject.tag)    //obstacle ve collectible lardan scale modifiye ozelligi kaldirildi
+        switch(collision.gameObject.tag)
         {
             case "Jelly":               
                 IncreaseJellyBy(jellyworth, collision.gameObject); 
@@ -204,9 +250,17 @@ public class PlayerControl : MonoBehaviour
                 Crash();
                 Destroy(collision.gameObject);
                 break;
-            case "Shop":
+            case "EnteringPlatform":
                 EnterShoppingPhase();
+                collision.collider.GetComponent<MeshCollider>().enabled = false;
+                break;
+            case "ShopPlatform":
+                EnterShop();
+                break;
+            case "ExitingPlatform":
+                ExitShoppingPhase();
                 break;
         }
     }
+    
 }

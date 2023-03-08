@@ -12,6 +12,9 @@ TagManager:
   - SpeedText
   - CapacityText
   - JellyText
+  - ShopPlatform
+  - EnteringPlatform
+  - ExitingPlatform
   layers:
   - Default
   - TransparentFX
