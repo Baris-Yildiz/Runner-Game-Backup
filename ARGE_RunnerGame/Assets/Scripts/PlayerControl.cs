@@ -11,65 +11,74 @@ public class PlayerControl : MonoBehaviour
     Touch touch;
     [SerializeField] float horizontalSpeed=0.01f;
     [SerializeField] float speed =0f;
+    
     float newPositionZ; 
     float newPositionX;
+
+    [Header("Level")]
+    public GameObject level;
+    LevelScript levelScript;
+
+    [Header("UI Elements")]
     public TMP_Text collectibleText; 
     public TMP_Text toyText;
     public GameObject shopPanel;
+    public Animator capacityFullAnimator;
+    private float toyCount = 0;
+
+    [Header("Shop Objects")]
     public GameObject shopPlatform;
+    private float shopLowerBound;
+    private bool inShop = false;
+    readonly int[] upgradeCosts = { 80, 10 }; //0:jelly, 1:capacity
+    readonly int[] upgradeImpacts = { 1, 1 };
+
+    [Header("Camera")]
     public Camera cam; 
+
+    [Header("Jellies")]
     public GameObject sackJellyPrefab;
     public List<GameObject> sackJellies;
+    public Transform jellyPool;
     private int jellyIndex = 0;
-    public Transform pool;
-    public bool inShop = false;
-    private float shopLowerBound;
+    private float jellyCount = 0;
 
-    float jellyCount, toyCount = 0;
-
-    public Animator capacityFullAnimator;
-
+    [Header("Game Elements")]
     public int capacity;
     public float toyCost;
     float minSpeed = 7f;
     public int jellyworth;
 
-    public Vector3 GetSackTransform(float offset)
+    //---------------------------SHOP METHODS----------------------------//
+    IEnumerator Zoom(float rotate, float translate)
     {
-        Vector3 parentTransform = gameObject.transform.position;
-        return new Vector3(parentTransform.x, parentTransform.y + (offset / 2), parentTransform.z - 0.85f);
+        int timer = 0;
+        while (timer++ < 30)
+        {
+            cam.gameObject.transform.Rotate(rotate, 0, 0);
+            cam.gameObject.transform.Translate(0, translate, 0);
+            yield return new WaitForSeconds(0.015f);
+        }
     }
-
-    public void PutInSack()
+    void EnterShoppingPhase()
     {
-        GameObject jelly = sackJellies[jellyIndex];
-        jelly.SetActive(true);
-        jelly.transform.SetParent(gameObject.transform.GetChild(1));
-        jelly.transform.position = GetSackTransform(jellyIndex);
-        jellyIndex++;
+        shopLowerBound = gameObject.transform.position.z + 1;
+        speed = 0;
+        inShop = true;
+        gameObject.transform.Translate(0, 0, 2);
+        StartCoroutine(Zoom(1, 0.4f));
     }
-
-    public void RemoveFromSack()
+    void EnterShop()
     {
-        GameObject jelly = sackJellies[--jellyIndex];
-        jelly.SetActive(false);
-        jelly.transform.SetParent(pool);
+        Time.timeScale = 0f;
+        shopPanel.SetActive(true);
     }
-
-    public void PutInPool()
-    {
-        GameObject jelly = Instantiate(sackJellyPrefab);
-        jelly.transform.SetParent(pool);
-        jelly.SetActive(false);
-        sackJellies.Add(jelly);
-    }
-
     public void MakeToys()
     {
         if (jellyCount >= 1)
         {
             toyCount += 2 * jellyCount;
-            for(int i = 0; i < jellyCount; i++)
+            for (int i = 0; i < jellyCount; i++)
             {
                 RemoveFromSack();
             }
@@ -77,18 +86,6 @@ public class PlayerControl : MonoBehaviour
             collectibleText.text = jellyCount.ToString();
             toyText.text = toyCount.ToString();
         }
-    }
-
-    
-
-    public void ExitShoppingPhase()
-    {
-        speed = 7f;
-        inShop = false;
-        StartCoroutine(Zoom(-1,-0.4f));
-        cam.transform.position = new Vector3(gameObject.transform.position.x, cam.transform.position.y, gameObject.transform.position.z-10);
-        cam.transform.SetParent(gameObject.transform);
-
     }
 
     public void UpgradeTrait(int trait)  // 0 for jelly, 1 for capacity 
@@ -108,7 +105,7 @@ public class PlayerControl : MonoBehaviour
                     break;
                 case 1:
                     capacity += upgradeImpacts[trait];
-                    for(int i = 0; i < upgradeImpacts[trait]; i++)
+                    for (int i = 0; i < upgradeImpacts[trait]; i++)
                     {
                         PutInPool();
                     }
@@ -120,21 +117,6 @@ public class PlayerControl : MonoBehaviour
         }
     }
 
-    void EnterShoppingPhase()
-    {
-        shopLowerBound = gameObject.transform.position.z + 1;
-        speed = 0;
-        inShop = true;
-        gameObject.transform.Translate(0, 0, 2);
-        StartCoroutine(Zoom(1,0.4f));
-        cam.transform.parent = null;
-    }
-
-    void EnterShop()
-    {
-        Time.timeScale = 0f;
-        shopPanel.SetActive(true);
-    }
     public void ExitShop()
     {
         Time.timeScale = 1;
@@ -142,16 +124,48 @@ public class PlayerControl : MonoBehaviour
 
     }
 
-    IEnumerator Zoom(float rotate, float translate)
+    public void ExitShoppingPhase()
     {
-        int timer = 0;
-        while (timer++ < 30)
-        {
-            cam.gameObject.transform.Rotate(rotate, 0, 0);
-            cam.gameObject.transform.Translate(0, translate, 0);
-            yield return new WaitForSeconds(0.015f);
-        }
+        Vector3 playerPos = gameObject.transform.position;
+        level.transform.position = new Vector3(0, -1, playerPos.z);
+        levelScript.CreateNewLevel();
+        speed = 7f;
+        inShop = false;
+        StartCoroutine(Zoom(-1, -0.4f));
+        cam.transform.position = new Vector3(gameObject.transform.position.x, cam.transform.position.y, gameObject.transform.position.z - 10);
     }
+    //---------------------------SHOP METHODS END HERE------------------//
+
+    //---------------------------JELLY POOLING--------------------------//
+    public Vector3 GetSackTransform(float offset)
+    {
+        Vector3 parentTransform = gameObject.transform.position;
+        return new Vector3(parentTransform.x, parentTransform.y + (offset / 2), parentTransform.z - 0.85f);
+    }
+    public void PutInSack()
+    {
+        GameObject jelly = sackJellies[jellyIndex];
+        jelly.SetActive(true);
+        jelly.transform.SetParent(gameObject.transform.GetChild(1));
+        jelly.transform.position = GetSackTransform(jellyIndex);
+        jellyIndex++;
+    }
+    public void RemoveFromSack()
+    {
+        GameObject jelly = sackJellies[--jellyIndex];
+        jelly.SetActive(false);
+        jelly.transform.SetParent(jellyPool);
+    }
+    public void PutInPool()
+    {
+        GameObject jelly = Instantiate(sackJellyPrefab);
+        jelly.transform.SetParent(jellyPool);
+        jelly.SetActive(false);
+        sackJellies.Add(jelly);
+    }
+    //---------------------------JELLY POOLING ENDS HERE----------------//
+
+    //---------------------------GAMEPLAY------------------------------//
     void IncreaseJellyBy(int by, GameObject jelly)
     {
         if (jellyCount < capacity)
@@ -159,7 +173,9 @@ public class PlayerControl : MonoBehaviour
             jellyCount += by;
             speed += 2.5f;
             collectibleText.text = jellyCount.ToString();
+
             jelly.transform.DOMove(cam.ScreenToWorldPoint(new Vector3(collectibleText.transform.position.x, collectibleText.transform.position.y, collectibleText.transform.position.z + speed)), 0.5f);
+
             PutInSack();
             //Destroy(jelly);
         }
@@ -192,19 +208,16 @@ public class PlayerControl : MonoBehaviour
             DecreaseJellyBy(1);
         }
     }
-
-    readonly int[] upgradeCosts = { 80, 10 }; //0:jelly, 1:capacity
-    readonly int[] upgradeImpacts = { 1, 1 };
-
-    // Start is called before the first frame update
+    //---------------------------GAMEPLAY ENDS HERE--------------------//
+    
     void Start()
     {
         collectibleText.text = jellyCount.ToString();
         toyText.text = toyCount.ToString();
-        
+        levelScript = GameObject.FindGameObjectWithTag("LevelManager").GetComponent<LevelScript>();
+        levelScript.CreateNewLevel();
     }
 
-    // Update is called once per frame
     void FixedUpdate()
     {
         transform.Translate(0, 0, speed * Time.deltaTime);

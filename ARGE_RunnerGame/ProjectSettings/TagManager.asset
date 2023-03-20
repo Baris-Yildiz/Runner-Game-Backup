@@ -15,6 +15,7 @@ TagManager:
   - ShopPlatform
   - EnteringPlatform
   - ExitingPlatform
+  - LevelManager
   layers:
   - Default
   - TransparentFX
